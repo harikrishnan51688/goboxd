@@ -1,0 +1,48 @@
+syntax = "proto3";
+
+package judge;
+
+option go_package = "goboxd/proto";
+
+enum Status {
+  OK = 0;
+  ERROR = 1;
+  TLE = 2;
+  MLE = 3;
+  COMPILATION_ERROR = 4;
+  RUNTIME_ERROR = 5;
+}
+
+message Code {
+  string full_code = 1;
+}
+
+message TestCase {
+  string input = 1;
+  string output = 2;
+}
+
+message JudgeRequest {
+  Code code = 1;
+  string language = 2;
+  repeated TestCase testcases = 3;
+}
+
+message CompilationResult {
+  Status status = 1;
+  string output = 2;
+  string error = 3;
+}
+
+message TestCaseResult {
+  Status status = 1;
+  string actual_output = 2;
+  string expected_output = 3;
+  string error = 4;
+}
+
+message JudgeResponse {
+  Status overall_status = 1;
+  CompilationResult compilation_result = 2;
+  repeated TestCaseResult test_case_results = 3;
+}

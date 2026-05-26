@@ -1,0 +1,3 @@
+{
+  "message": "code { full_code: \"import time\\ntime.sleep(60)\\nprint('done')\" } language: \"py3\" testcases { input: \"\" output: \"done\\n\" }"
+}

@@ -1,0 +1,3 @@
+{
+  "message": "code { full_code: \"import socket\\ntry:\\n    s = socket.create_connection(('8.8.8.8', 53), timeout=3)\\n    print('NETWORK_ACCESSIBLE')\\nexcept Exception as e:\\n    print('NO_NETWORK')\" } language: \"py3\" testcases { input: \"\" output: \"NO_NETWORK\\n\" }"
+}

@@ -1,0 +1,3 @@
+{
+  "message": "code { full_code: \"public class Main {\\n    public static void main(String[] args) {\\n        System.out.println(\\\"Hello from Java!\\\");\\n    }\\n}\" } language: \"java\" testcases { input: \"\" output: \"Hello from Java!\\n\" }"
+}

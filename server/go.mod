@@ -1,0 +1,8 @@
+module goboxd
+
+go 1.23
+
+require (
+	google.golang.org/protobuf v1.34.2
+	gopkg.in/yaml.v3 v3.0.1
+)

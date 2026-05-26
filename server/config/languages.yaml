@@ -1,0 +1,110 @@
+nsjail_path: "/usr/local/bin/nsjail"
+sandbox_dir: "/sandbox"
+
+# These args are prepended to every nsjail invocation.
+# nsjail's default CLONE_NEWNET creates an isolated network namespace
+# (sandboxed code cannot reach the host network).
+# Container must run with --privileged for namespace creation to work.
+default_nsjail_args:
+  - "--env"
+  - "PATH=/usr/local/bin:/usr/bin:/bin"
+  - "-B"
+  - "/dev:/dev"
+  - "-R"
+  - "/etc:/etc"
+  - "--log_fd"
+  - "3"
+
+languages:
+  - language: "bash"
+    filename: "solution.sh"
+    runtime_options:
+      path: "/bin/bash"
+      args: ["{{ FILENAME }}"]
+      resource_limits:
+        time_limit: 5
+        process_limit: 50
+        memory_limit_mb: 128
+
+  - language: "py3"
+    filename: "solution.py"
+    runtime_options:
+      path: "/usr/bin/python3"
+      args: ["{{ FILENAME }}"]
+      resource_limits:
+        time_limit: 5
+        process_limit: 50
+        memory_limit_mb: 128
+
+  - language: "py2"
+    filename: "solution.py"
+    runtime_options:
+      path: "/usr/bin/python"
+      args: ["{{ FILENAME }}"]
+      resource_limits:
+        time_limit: 5
+        process_limit: 50
+        memory_limit_mb: 128
+
+  - language: "c"
+    filename: "solution.c"
+    compilation_options:
+      path: "/usr/bin/gcc"
+      args: ["{{ EXTRA_ARGS }}", "-o", "a.out", "{{ FILENAME }}"]
+      resource_limits:
+        time_limit: 10
+        process_limit: 100
+        memory_limit_mb: 512
+    runtime_options:
+      path: "./a.out"
+      args: []
+      resource_limits:
+        time_limit: 5
+        process_limit: 50
+        memory_limit_mb: 128
+
+  - language: "cpp"
+    filename: "solution.cpp"
+    compilation_options:
+      path: "/usr/bin/g++"
+      args: ["{{ EXTRA_ARGS }}", "-o", "a.out", "{{ FILENAME }}"]
+      resource_limits:
+        time_limit: 10
+        process_limit: 100
+        memory_limit_mb: 512
+    runtime_options:
+      path: "./a.out"
+      args: []
+      resource_limits:
+        time_limit: 5
+        process_limit: 50
+        memory_limit_mb: 128
+
+  - language: "java"
+    # Set filename to "TAKE_FROM_REQUEST" to derive from the public class name
+    filename: "TAKE_FROM_REQUEST"
+    binary_filename: "TAKE_FROM_REQUEST"
+    compilation_options:
+      path: "/usr/lib/jvm/java-17-openjdk-amd64/bin/javac"
+      args: ["{{ EXTRA_ARGS }}", "{{ FILENAME }}"]
+      resource_limits:
+        time_limit: 10
+        process_limit: 100
+        memory_limit_mb: 102400
+    runtime_options:
+      path: "/usr/lib/jvm/java-17-openjdk-amd64/bin/java"
+      args: ["{{ BINARY_FILENAME }}"]
+      resource_limits:
+        time_limit: 5
+        process_limit: 100
+        memory_limit_mb: 102400
+
+  - language: "js"
+    filename: "solution.js"
+    runtime_options:
+      path: "/usr/bin/node"
+      args: ["{{ FILENAME }}"]
+      resource_limits:
+        time_limit: 5
+        process_limit: 50
+        memory_limit_mb: 102400

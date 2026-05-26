@@ -1,21 +1,19 @@
+version: "3.9"
+
 services:
   goboxd:
     build:
       context: .
-      target: runtime
-    image: goboxd:dev
+      dockerfile: Dockerfile
+      target: nsjail-server
+    image: goboxd:latest
     container_name: goboxd
     ports:
-      - "8080:8080"
+      - "8000:8000"
+    # nsjail requires SYS_ADMIN (for chroot + namespace creation)
+    # and PTRACE (for nsjail process tracking).
+    # Using privileged is the simplest way to satisfy these in Docker.
     privileged: true
-
-  tools:
-    build:
-      context: .
-      target: builder
-    image: goboxd-tools:dev
-    volumes:
-      - .:/src
-    working_dir: /src
-    profiles: ["tools"]
-    entrypoint: []
+    restart: unless-stopped
+    environment:
+      - CONFIG_PATH=/app/config/languages.yaml

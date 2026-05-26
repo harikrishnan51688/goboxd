@@ -1,0 +1,3 @@
+{
+  "message": "code { full_code: \"try:\\n    with open('/etc/passwd', 'w') as f:\\n        f.write('hacked')\\n    print('WRITE_OK')\\nexcept Exception:\\n    print('WRITE_DENIED')\" } language: \"py3\" testcases { input: \"\" output: \"WRITE_DENIED\\n\" }"
+}

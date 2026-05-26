@@ -1,0 +1,3 @@
+{
+  "message": "code { full_code: \"const lines = require('fs').readFileSync('/dev/stdin', 'utf8').trim().split('\\\\n');\\nconst n = parseInt(lines[0]);\\nconsole.log(n * n);\" } language: \"js\" testcases { input: \"7\\n\" output: \"49\\n\" } testcases { input: \"12\\n\" output: \"144\\n\" }"
+}

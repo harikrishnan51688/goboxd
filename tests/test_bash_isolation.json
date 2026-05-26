@@ -1,0 +1,3 @@
+{
+    "message": "code { full_code: \"#!/bin/bash\\nwhoami\" } language: \"bash\" testcases { input: \"\" output: \"root\\n\" }"
+}

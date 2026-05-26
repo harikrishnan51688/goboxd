@@ -1,0 +1,3 @@
+{
+  "message": "code { full_code: \"#!/bin/bash\\nread n\\necho $((n * n))\" } language: \"bash\" testcases { input: \"7\\n\" output: \"49\\n\" } testcases { input: \"12\\n\" output: \"144\\n\" }"
+}
