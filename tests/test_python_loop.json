@@ -1,3 +1,10 @@
 {
-    "message": "code { full_code: \"while True:\\n    pass\" } language: \"py3\" testcases { input: \"\" output: \"\" }"
+  "language": "py3",
+  "source": "while True:\n    pass",
+  "tests": [
+    {
+      "stdin": "",
+      "expected_stdout": ""
+    }
+  ]
 }

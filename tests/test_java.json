@@ -1,3 +1,12 @@
 {
-  "message": "code { full_code: \"public class Main {\\n    public static void main(String[] args) {\\n        System.out.println(\\\"Hello from Java!\\\");\\n    }\\n}\" } language: \"java\" testcases { input: \"\" output: \"Hello from Java!\\n\" }"
+  "language": "java",
+  "source": "public class Main {\n    public static void main(String[] args) {\n        System.out.println(\"Hello from Java!\");\n    }\n}",
+  "source_filename": "Main.java",
+  "artifact_filename": "Main",
+  "tests": [
+    {
+      "stdin": "",
+      "expected_stdout": "Hello from Java!\n"
+    }
+  ]
 }

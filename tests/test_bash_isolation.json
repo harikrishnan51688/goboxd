@@ -1,3 +1,10 @@
 {
-    "message": "code { full_code: \"#!/bin/bash\\nwhoami\" } language: \"bash\" testcases { input: \"\" output: \"root\\n\" }"
+  "language": "bash",
+  "source": "#!/bin/bash\nid -u",
+  "tests": [
+    {
+      "stdin": "",
+      "expected_stdout": "99999\n"
+    }
+  ]
 }

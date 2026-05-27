@@ -1,3 +1,14 @@
 {
-  "message": "code { full_code: \"#!/bin/bash\\nread n\\necho $((n * n))\" } language: \"bash\" testcases { input: \"7\\n\" output: \"49\\n\" } testcases { input: \"12\\n\" output: \"144\\n\" }"
+  "language": "bash",
+  "source": "#!/bin/bash\nread n\necho $((n * n))",
+  "tests": [
+    {
+      "stdin": "7\n",
+      "expected_stdout": "49\n"
+    },
+    {
+      "stdin": "12\n",
+      "expected_stdout": "144\n"
+    }
+  ]
 }

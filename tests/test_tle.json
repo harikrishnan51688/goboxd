@@ -1,3 +1,10 @@
 {
-  "message": "code { full_code: \"import time\\ntime.sleep(60)\\nprint('done')\" } language: \"py3\" testcases { input: \"\" output: \"done\\n\" }"
+  "language": "py3",
+  "source": "import time\ntime.sleep(60)\nprint('done')",
+  "tests": [
+    {
+      "stdin": "",
+      "expected_stdout": "done\n"
+    }
+  ]
 }

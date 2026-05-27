@@ -1,3 +1,14 @@
 {
-  "message": "code { full_code: \"#include <stdio.h>\\nint main() {\\n    int a, b;\\n    scanf(\\\"%d %d\\\", &a, &b);\\n    printf(\\\"%d\\\\n\\\", a + b);\\n    return 0;\\n}\" } language: \"c\" testcases { input: \"3 5\\n\" output: \"8\\n\" } testcases { input: \"10 20\\n\" output: \"30\\n\" }"
+  "language": "c",
+  "source": "#include <stdio.h>\nint main() {\n    int a, b;\n    scanf(\"%d %d\", &a, &b);\n    printf(\"%d\\n\", a + b);\n    return 0;\n}",
+  "tests": [
+    {
+      "stdin": "3 5\n",
+      "expected_stdout": "8\n"
+    },
+    {
+      "stdin": "10 20\n",
+      "expected_stdout": "30\n"
+    }
+  ]
 }
