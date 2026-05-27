@@ -10,6 +10,7 @@ import (
 	"path/filepath"
 	"regexp"
 	"strings"
+	"syscall"
 	"time"
 
 	"goboxd/config"
@@ -27,36 +28,36 @@ func New(cfg *config.Config) *Executor {
 
 // sandboxResult is the internal result of a single nsjail invocation.
 type sandboxResult struct {
-	Status pb.Status
+	Status string
 	Stdout string
 	Stderr string
 }
 
-// Run executes a JudgeRequest and returns a JudgeResponse.
-func (e *Executor) Run(req *pb.JudgeRequest) *pb.JudgeResponse {
+// Run executes a RunRequest and returns a RunResponse.
+func (e *Executor) Run(req *pb.RunRequest) (*pb.RunResponse, error) {
 	lang, err := e.cfg.Lookup(req.Language)
 	if err != nil {
-		return errorResponse(fmt.Sprintf("unknown language: %v", err))
+		return nil, fmt.Errorf("lookup language: %w", err)
 	}
 
 	// Create an isolated temp working directory on the host.
 	// nsjail will bind-mount it into the chroot as /work.
 	workDir, err := os.MkdirTemp("", "goboxd-*")
 	if err != nil {
-		return errorResponse(fmt.Sprintf("mkdirtemp: %v", err))
+		return nil, fmt.Errorf("mkdirtemp: %w", err)
 	}
 	defer os.RemoveAll(workDir)
 
 	// Determine source and binary filenames
 	srcFile, binFile, err := resolveFilenames(lang, req)
 	if err != nil {
-		return errorResponse(err.Error())
+		return nil, fmt.Errorf("resolve filenames: %w", err)
 	}
 
 	// Write source code into the working directory
 	srcPath := filepath.Join(workDir, srcFile)
-	if err := os.WriteFile(srcPath, []byte(req.Code.FullCode), 0644); err != nil {
-		return errorResponse(fmt.Sprintf("write source: %v", err))
+	if err := os.WriteFile(srcPath, []byte(req.Source), 0644); err != nil {
+		return nil, fmt.Errorf("write source: %w", err)
 	}
 
 	templateVars := map[string]string{
@@ -65,78 +66,94 @@ func (e *Executor) Run(req *pb.JudgeRequest) *pb.JudgeResponse {
 		"EXTRA_ARGS":      "",
 	}
 
-	resp := &pb.JudgeResponse{}
+	resp := &pb.RunResponse{}
 
 	// ── Compilation step (skipped for interpreted languages) ──────────────
 	if lang.CompilationOptions != nil {
-		r := e.runInSandbox(workDir, lang.CompilationOptions, templateVars, "")
-		resp.CompilationResult = &pb.CompilationResult{
-			Status: r.Status,
-			Output: r.Stdout,
-			Error:  r.Stderr,
+		buildOpts := overrideOptions(lang.CompilationOptions, req.Build)
+		var buildFlags []string
+		if req.Build != nil {
+			buildFlags = req.Build.Flags
 		}
-		if r.Status != pb.Status_OK {
-			resp.OverallStatus = pb.Status_COMPILATION_ERROR
-			return resp
+		r, compDuration, _ := e.runInSandbox(workDir, buildOpts, templateVars, "", buildFlags)
+
+		buildStatus := "ok"
+		if r.Status != "ok" {
+			buildStatus = "failed"
 		}
-	} else {
-		resp.CompilationResult = &pb.CompilationResult{Status: pb.Status_OK}
+
+		resp.Build = &pb.BuildResult{
+			Status:     buildStatus,
+			Stdout:     r.Stdout,
+			Stderr:     r.Stderr,
+			DurationMs: int32(compDuration),
+		}
+
+		if r.Status != "ok" {
+			resp.Status = "compilation_error"
+			return resp, nil
+		}
 	}
 
 	// ── Test case execution ───────────────────────────────────────────────
-	overallOK := true
-	for _, tc := range req.Testcases {
-		tcr := e.runTestCase(workDir, lang, templateVars, tc)
-		resp.TestCaseResults = append(resp.TestCaseResults, tcr)
-		if tcr.Status != pb.Status_OK {
-			overallOK = false
-		}
+	runtimeOpts := overrideOptions(&lang.RuntimeOptions, req.Run)
+	var runFlags []string
+	if req.Run != nil {
+		runFlags = req.Run.Flags
 	}
 
-	if overallOK {
-		resp.OverallStatus = pb.Status_OK
-	} else {
-		resp.OverallStatus = pb.Status_ERROR
+	overallStatus := "ok"
+	for _, tc := range req.Tests {
+		tcr := e.runTestCase(workDir, lang, runtimeOpts, templateVars, tc, runFlags)
+		resp.Tests = append(resp.Tests, tcr)
+		if tcr.Status != "ok" && overallStatus == "ok" {
+			overallStatus = tcr.Status
+		}
 	}
-	return resp
+	resp.Status = overallStatus
+
+	return resp, nil
 }
 
 // runTestCase runs one test case and compares output to expected.
 func (e *Executor) runTestCase(
 	workDir string,
 	lang *config.LanguageConfig,
+	opts *config.ExecutionOptions,
 	templateVars map[string]string,
 	tc *pb.TestCase,
-) *pb.TestCaseResult {
-	r := e.runInSandbox(workDir, &lang.RuntimeOptions, templateVars, tc.Input)
+	flags []string,
+) *pb.TestResult {
+	r, durationMs, memoryPeakKB := e.runInSandbox(workDir, opts, templateVars, tc.Stdin, flags)
 
-	tcr := &pb.TestCaseResult{
-		ExpectedOutput: tc.Output,
-		ActualOutput:   r.Stdout,
+	tcr := &pb.TestResult{
+		Stdout:       r.Stdout,
+		Stderr:       r.Stderr,
+		DurationMs:  int32(durationMs),
+		MemoryPeakKb: int32(memoryPeakKB),
 	}
 
 	switch r.Status {
-	case pb.Status_OK:
-		if r.Stdout == tc.Output {
-			tcr.Status = pb.Status_OK
+	case "ok":
+		if r.Stdout == tc.ExpectedStdout {
+			tcr.Status = "ok"
 		} else {
-			tcr.Status = pb.Status_ERROR
-			tcr.Error = "wrong answer"
+			tcr.Status = "wrong_output"
 		}
 	default:
 		tcr.Status = r.Status
-		tcr.Error = r.Stderr
 	}
 	return tcr
 }
 
-// runInSandbox builds and runs an nsjail command, returning a sandboxResult.
+// runInSandbox builds and runs an nsjail command, returning a sandboxResult, duration in ms, and peak memory in kb.
 func (e *Executor) runInSandbox(
 	workDir string,
 	opts *config.ExecutionOptions,
 	templateVars map[string]string,
 	stdin string,
-) *sandboxResult {
+	flags []string,
+) (*sandboxResult, int64, int64) {
 	// ── Build nsjail arguments ────────────────────────────────────────────
 	args := []string{
 		"-Mo",
@@ -161,7 +178,7 @@ func (e *Executor) runInSandbox(
 	// Separator before the sandboxed program
 	args = append(args, "--")
 	args = append(args, opts.Path)
-	args = append(args, config.ExpandArgs(opts.Args, templateVars)...)
+	args = append(args, config.ExpandArgsWithFlags(opts.Args, templateVars, flags)...)
 
 	// ── Run with a deadline slightly above the sandbox time_limit ─────────
 	timeout := time.Duration(opts.ResourceLimits.TimeLimit+2) * time.Second
@@ -184,7 +201,9 @@ func (e *Executor) runInSandbox(
 		cmd.ExtraFiles = []*os.File{logW} // fd 3
 	}
 
+	startTime := time.Now()
 	runErr := cmd.Run()
+	durationMs := time.Since(startTime).Milliseconds()
 
 	// Close write end so ReadAll doesn't block, then drain the log
 	var nsjailLog string
@@ -195,46 +214,69 @@ func (e *Executor) runInSandbox(
 		nsjailLog = string(logBytes)
 	}
 
-	if ctx.Err() == context.DeadlineExceeded {
-		return &sandboxResult{Status: pb.Status_TLE, Stderr: "time limit exceeded (host timeout)"}
-	}
-
-	if runErr != nil {
-		return &sandboxResult{
-			Status: classifyFailure(nsjailLog + stderr.String()),
-			Stdout: stdout.String(),
-			Stderr: nsjailLog,
+	var memoryPeakKB int64 = 0
+	if cmd.ProcessState != nil && cmd.ProcessState.SysUsage() != nil {
+		if rusage, ok := cmd.ProcessState.SysUsage().(*syscall.Rusage); ok {
+			memoryPeakKB = rusage.Maxrss
 		}
 	}
 
-	return &sandboxResult{
-		Status: pb.Status_OK,
-		Stdout: stdout.String(),
-		Stderr: stderr.String(),
+	stderrContent := stderr.String()
+	if runErr != nil && stderrContent == "" {
+		stderrContent = nsjailLog
 	}
+
+	if ctx.Err() == context.DeadlineExceeded {
+		return &sandboxResult{
+			Status: "time_limit_exceeded",
+			Stdout: stdout.String(),
+			Stderr: "time limit exceeded (host timeout)",
+		}, durationMs, memoryPeakKB
+	}
+
+	if runErr != nil {
+		combinedStderr := nsjailLog + stderr.String()
+		return &sandboxResult{
+			Status: classifyFailure(combinedStderr),
+			Stdout: stdout.String(),
+			Stderr: stderrContent,
+		}, durationMs, memoryPeakKB
+	}
+
+	return &sandboxResult{
+		Status: "ok",
+		Stdout: stdout.String(),
+		Stderr: stderr.String(), // keep it strictly clean for successful runs
+	}, durationMs, memoryPeakKB
 }
 
-// classifyFailure inspects nsjail's stderr log to pick the right Status.
-func classifyFailure(nsjailLog string) pb.Status {
+// classifyFailure inspects nsjail's stderr log to pick the right Status string.
+func classifyFailure(nsjailLog string) string {
 	lower := strings.ToLower(nsjailLog)
 	switch {
 	case strings.Contains(lower, "time limit") || strings.Contains(lower, "timelimit"):
-		return pb.Status_TLE
+		return "time_limit_exceeded"
 	case strings.Contains(lower, "memory") || strings.Contains(lower, "oom"):
-		return pb.Status_MLE
+		return "memory_limit_exceeded"
 	default:
-		return pb.Status_RUNTIME_ERROR
+		return "runtime_error"
 	}
 }
 
 // resolveFilenames determines the actual source and binary filenames.
-// For Java, the public class name is extracted from the source code.
-func resolveFilenames(lang *config.LanguageConfig, req *pb.JudgeRequest) (string, string, error) {
-	src := lang.Filename
-	bin := lang.BinaryFilename
+func resolveFilenames(lang *config.LanguageConfig, req *pb.RunRequest) (string, string, error) {
+	src := req.SourceFilename
+	bin := req.ArtifactFilename
+
+	if src == "" {
+		src = lang.Filename
+	}
+	if bin == "" {
+		bin = lang.BinaryFilename
+	}
 
 	if src == "TAKE_FROM_REQUEST" {
-		className, err := extractJavaClassName(req.Code.FullCode)
+		className, err := extractJavaClassName(req.Source)
 		if err != nil {
 			return "", "", fmt.Errorf("java filename: %w", err)
 		}
@@ -257,12 +299,37 @@ func extractJavaClassName(code string) (string, error) {
 	return m[1], nil
 }
 
-func errorResponse(msg string) *pb.JudgeResponse {
-	return &pb.JudgeResponse{
-		OverallStatus: pb.Status_ERROR,
-		CompilationResult: &pb.CompilationResult{
-			Status: pb.Status_ERROR,
-			Error:  msg,
+func overrideOptions(base *config.ExecutionOptions, stepReq *pb.StepConfig) *config.ExecutionOptions {
+	if base == nil {
+		return nil
+	}
+	opts := &config.ExecutionOptions{
+		Path: base.Path,
+		Args: make([]string, len(base.Args)),
+		ResourceLimits: config.ResourceLimits{
+			TimeLimit:     base.ResourceLimits.TimeLimit,
+			ProcessLimit:  base.ResourceLimits.ProcessLimit,
+			MemoryLimitMB: base.ResourceLimits.MemoryLimitMB,
 		},
 	}
+	copy(opts.Args, base.Args)
+
+	if stepReq == nil {
+		return opts
+	}
+
+	if stepReq.Limits != nil {
+		if stepReq.Limits.WallTimeS > 0 {
+			opts.ResourceLimits.TimeLimit = int(stepReq.Limits.WallTimeS)
+		}
+		if stepReq.Limits.MaxProcesses > 0 {
+			opts.ResourceLimits.ProcessLimit = int(stepReq.Limits.MaxProcesses)
+		}
+		if stepReq.Limits.MemoryKb > 0 {
+			// Convert KB to MB (taking ceiling)
+			opts.ResourceLimits.MemoryLimitMB = int((stepReq.Limits.MemoryKb + 1023) / 1024)
+		}
+	}
+
+	return opts
 }

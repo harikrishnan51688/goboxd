@@ -4,45 +4,50 @@ package judge;
 
 option go_package = "goboxd/proto";
 
-enum Status {
-  OK = 0;
-  ERROR = 1;
-  TLE = 2;
-  MLE = 3;
-  COMPILATION_ERROR = 4;
-  RUNTIME_ERROR = 5;
+message Limits {
+  int32 wall_time_s = 1;
+  int32 memory_kb = 2;
+  int32 max_processes = 3;
 }
 
-message Code {
-  string full_code = 1;
+message StepConfig {
+  Limits limits = 1;
+  repeated string flags = 2;
 }
 
 message TestCase {
-  string input = 1;
-  string output = 2;
+  string stdin = 1;
+  string expected_stdout = 2;
 }
 
-message JudgeRequest {
-  Code code = 1;
-  string language = 2;
-  repeated TestCase testcases = 3;
+message RunRequest {
+  string language = 1;
+  string source = 2;
+  string source_filename = 3;
+  string artifact_filename = 4;
+  StepConfig build = 5;
+  StepConfig run = 6;
+  repeated TestCase tests = 7;
 }
 
-message CompilationResult {
-  Status status = 1;
-  string output = 2;
-  string error = 3;
+message BuildResult {
+  string status = 1;      // "ok", "failed"
+  string stdout = 2;
+  string stderr = 3;
+  int32 duration_ms = 4;
 }
 
-message TestCaseResult {
-  Status status = 1;
-  string actual_output = 2;
-  string expected_output = 3;
-  string error = 4;
+message TestResult {
+  string status = 1;      // "ok", "wrong_output", "time_limit_exceeded", "memory_limit_exceeded", "runtime_error"
+  string stdout = 2;
+  string stderr = 3;
+  int32 duration_ms = 4;
+  int32 memory_peak_kb = 5;
 }
 
-message JudgeResponse {
-  Status overall_status = 1;
-  CompilationResult compilation_result = 2;
-  repeated TestCaseResult test_case_results = 3;
+message RunResponse {
+  string status = 1;      // "ok", "wrong_output", etc.
+  BuildResult build = 2;
+  repeated TestResult tests = 3;
 }
+

@@ -62,6 +62,18 @@ languages:
         time_limit: 5
         process_limit: 50
         memory_limit_mb: 128
+    allowed_build_flags:
+      - "-O0"
+      - "-O1"
+      - "-O2"
+      - "-O3"
+      - "-Wall"
+      - "-Wextra"
+      - "-std=c11"
+      - "-std=c17"
+      - "-lm"
+      - "-g"
+    allowed_run_flags: []
 
   - language: "cpp"
     filename: "solution.cpp"
@@ -79,6 +91,20 @@ languages:
         time_limit: 5
         process_limit: 50
         memory_limit_mb: 128
+    allowed_build_flags:
+      - "-O0"
+      - "-O1"
+      - "-O2"
+      - "-O3"
+      - "-Wall"
+      - "-Wextra"
+      - "-std=c++11"
+      - "-std=c++14"
+      - "-std=c++17"
+      - "-std=c++20"
+      - "-lm"
+      - "-g"
+    allowed_run_flags: []
 
   - language: "java"
     # Set filename to "TAKE_FROM_REQUEST" to derive from the public class name

@@ -26,6 +26,8 @@ type LanguageConfig struct {
 	BinaryFilename     string            `yaml:"binary_filename"`
 	CompilationOptions *ExecutionOptions `yaml:"compilation_options"`
 	RuntimeOptions     ExecutionOptions  `yaml:"runtime_options"`
+	AllowedBuildFlags  []string          `yaml:"allowed_build_flags"`
+	AllowedRunFlags    []string          `yaml:"allowed_run_flags"`
 }
 
 type Config struct {
@@ -73,3 +75,45 @@ func ExpandArgs(args []string, vars map[string]string) []string {
 	}
 	return out
 }
+
+// ExpandArgsWithFlags replaces template variables in an arg slice and injects flags.
+func ExpandArgsWithFlags(args []string, vars map[string]string, flags []string) []string {
+	out := make([]string, 0, len(args)+len(flags))
+	expandedExtraArgs := false
+
+	for _, a := range args {
+		if strings.Contains(a, "{{ EXTRA_ARGS }}") {
+			// If it's exactly "{{ EXTRA_ARGS }}", we can insert the flags individually
+			if a == "{{ EXTRA_ARGS }}" {
+				out = append(out, flags...)
+				expandedExtraArgs = true
+				continue
+			}
+			// Otherwise replace it in-place
+			expanded := strings.ReplaceAll(a, "{{ EXTRA_ARGS }}", strings.Join(flags, " "))
+			if strings.TrimSpace(expanded) != "" {
+				out = append(out, expanded)
+			}
+			expandedExtraArgs = true
+			continue
+		}
+
+		expanded := a
+		for k, v := range vars {
+			if k != "EXTRA_ARGS" {
+				expanded = strings.ReplaceAll(expanded, "{{ "+k+" }}", v)
+			}
+		}
+		if strings.TrimSpace(expanded) != "" {
+			out = append(out, expanded)
+		}
+	}
+
+	// If EXTRA_ARGS was not present in the template, append flags at the end
+	if !expandedExtraArgs && len(flags) > 0 {
+		out = append(out, flags...)
+	}
+
+	return out
+}
+
