@@ -1,13 +1,9 @@
 FROM debian:bookworm-slim AS nsjail-base
 
-RUN apt-get update && apt-get install -y --no-install-recommends
-
 COPY scripts/ /app/scripts/
 RUN chmod +x /app/scripts/install.sh && /app/scripts/install.sh
 
-# ---------------------------------------------------------------------------
-# Go builder: compile the judge server
-# ---------------------------------------------------------------------------
+
 FROM golang:1.23-bookworm AS go-builder
 
 # Install protoc and the Go protobuf plugin
@@ -20,12 +16,9 @@ RUN go install google.golang.org/protobuf/cmd/protoc-gen-go@v1.34.2
 WORKDIR /build
 
 # Copy go module files first for layer caching.
-# go mod download only needs go.mod (not source), making this layer cacheable.
-# It also writes go.sum so subsequent builds can verify module integrity.
 COPY server/go.mod ./
 RUN go mod download
 
-# Copy the rest of the server source
 COPY server/ ./
 
 # Generate protobuf Go bindings
@@ -39,9 +32,7 @@ RUN protoc \
 # Build the static binary
 RUN CGO_ENABLED=0 GOOS=linux go build -mod=mod -ldflags="-s -w" -o /goboxd .
 
-# ---------------------------------------------------------------------------
-# Final image: nsjail + languages + server
-# ---------------------------------------------------------------------------
+
 FROM nsjail-base AS nsjail-server
 
 # Build the pre-chroot sandbox directory
