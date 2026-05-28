@@ -29,8 +29,13 @@ RUN protoc \
         --go_opt=paths=source_relative \
         proto/judge.proto
 
+RUN go mod tidy
+        
 # Build the static binary
-RUN CGO_ENABLED=0 GOOS=linux go build -mod=mod -ldflags="-s -w" -o /goboxd .
+RUN CGO_ENABLED=0 GOOS=linux go build \
+        -mod=mod \
+        -ldflags="-s -w -X goboxd/handler.Version=0.1.0" \
+        -o /goboxd .
 
 
 FROM nsjail-base AS nsjail-server
