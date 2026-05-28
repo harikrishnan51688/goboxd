@@ -37,6 +37,12 @@ RUN CGO_ENABLED=0 GOOS=linux go build \
         -ldflags="-s -w -X goboxd/handler.Version=0.1.0" \
         -o /goboxd .
 
+# Build the load tester binary
+COPY load/ ./load/
+RUN CGO_ENABLED=0 GOOS=linux go build \
+        -o /load-tester ./load/main.go
+
+
 
 FROM nsjail-base AS nsjail-server
 
@@ -44,11 +50,12 @@ FROM nsjail-base AS nsjail-server
 RUN mkdir -p /sandbox \
     && cp -r /bin  /sandbox/ \
     && cp -r /lib  /sandbox/ \
-    && cp -r /lib64 /sandbox/ \
+    && ([ -d /lib64 ] && cp -r /lib64 /sandbox/ || true) \
     && cp -r /usr  /sandbox/
 
-# Copy compiled server binary and config
+# Copy compiled server binary, load tester, and config
 COPY --from=go-builder /goboxd /app/goboxd
+COPY --from=go-builder /load-tester /app/load-tester
 COPY server/config/languages.yaml /app/config/languages.yaml
 
 # Create a writable /tmp inside the sandbox (nsjail workdir mount point)

@@ -25,13 +25,17 @@ import (
 type Handler struct {
 	cfg  *config.Config
 	exec *executor.Executor
+	sem  chan struct{}
 }
 
 // New creates a Handler backed by the given Config.
 func New(cfg *config.Config) *Handler {
+	limit := cfg.GetConcurrencyLimit()
+	log.Printf("Initializing handler with global concurrency limit: %d", limit)
 	return &Handler{
 		cfg:  cfg,
 		exec: executor.New(cfg),
+		sem:  make(chan struct{}, limit),
 	}
 }
 
@@ -84,6 +88,17 @@ func writeErrorResponse(w http.ResponseWriter, code string, msg string) {
 }
 
 func (h *Handler) judge(w http.ResponseWriter, r *http.Request) {
+	startTime := time.Now()
+	// Bounded global concurrency limit: queue requests if limit reached.
+	select {
+	case h.sem <- struct{}{}:
+		defer func() { <-h.sem }()
+	case <-r.Context().Done():
+		http.Error(w, "request cancelled in queue", 499)
+		return
+	}
+	queueDuration := time.Since(startTime)
+
 	body, err := io.ReadAll(r.Body)
 	if err != nil {
 		http.Error(w, "failed to read body", http.StatusBadRequest)
@@ -203,7 +218,9 @@ func (h *Handler) judge(w http.ResponseWriter, r *http.Request) {
 	log.Printf("judge: lang=%s tests=%d", req.Language, len(req.Tests))
 
 	// Execute the run
-	resp, err := h.exec.Run(&req)
+	execStart := time.Now()
+	resp, sandboxCpuMs, err := h.exec.Run(&req)
+	execDuration := time.Since(execStart)
 	if err != nil {
 		log.Printf("Sandbox setup / system error: %v", err)
 		http.Error(w, "internal server error: "+err.Error(), http.StatusInternalServerError)
@@ -222,8 +239,14 @@ func (h *Handler) judge(w http.ResponseWriter, r *http.Request) {
 	}
 
 	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("X-Queue-Time-Ms", fmt.Sprintf("%d", queueDuration.Milliseconds()))
+	w.Header().Set("X-Wall-Time-Ms", fmt.Sprintf("%d", execDuration.Milliseconds()))
+	w.Header().Set("X-CPU-Time-Ms", fmt.Sprintf("%d", sandboxCpuMs))
 	w.WriteHeader(http.StatusOK)
 	_, _ = w.Write(respBytes)
+
+	log.Printf("[METRIC] language=%s tests=%d queue_time_ms=%d wall_time_ms=%d cpu_time_ms=%d status=%s",
+		req.Language, len(req.Tests), queueDuration.Milliseconds(), execDuration.Milliseconds(), sandboxCpuMs, resp.Status)
 }
 
 type ComponentStatus struct {
@@ -289,7 +312,12 @@ func (h *Handler) readyz(w http.ResponseWriter, r *http.Request) {
 			path = lang.RuntimeOptions.Path
 		}
 
-		ver, err := probeExecutable(path)
+		versionFlag := lang.VersionFlag
+		if versionFlag == "" {
+			versionFlag = "--version"
+		}
+
+		ver, err := probeExecutable(path, versionFlag)
 		if err != nil {
 			overallOK = false
 			languagesStatus[lang.Language] = ComponentStatus{
@@ -323,7 +351,7 @@ func (h *Handler) readyz(w http.ResponseWriter, r *http.Request) {
 	_ = json.NewEncoder(w).Encode(resp)
 }
 
-func probeExecutable(path string) (string, error) {
+func probeExecutable(path string, versionFlag string) (string, error) {
 	info, err := os.Stat(path)
 	if err != nil {
 		return "", fmt.Errorf("not found at %s", path)
@@ -335,13 +363,17 @@ func probeExecutable(path string) (string, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
 	defer cancel()
 
-	cmd := exec.CommandContext(ctx, path, "--version")
+	cmd := exec.CommandContext(ctx, path, versionFlag)
 	var stdout, stderr bytes.Buffer
 	cmd.Stdout = &stdout
 	cmd.Stderr = &stderr
 
 	if err := cmd.Run(); err != nil {
-		return "", fmt.Errorf("execution failed: %v (stderr: %q)", err, stderr.String())
+		if exitErr, ok := err.(*exec.ExitError); ok && exitErr.ExitCode() != 0 {
+			return "", fmt.Errorf("execution failed: %v (stderr: %q)", err, stderr.String())
+		} else if !ok {
+			return "", fmt.Errorf("execution failed: %v (stderr: %q)", err, stderr.String())
+		}
 	}
 
 	outStr := stdout.String()

@@ -77,7 +77,11 @@ func (h *Handler) info(w http.ResponseWriter, r *http.Request) {
 		} else {
 			execPath = lc.RuntimeOptions.Path
 		}
-		ver, _ := probeExecutable(execPath)
+		versionFlag := lc.VersionFlag
+		if versionFlag == "" {
+			versionFlag = "--version"
+		}
+		ver, _ := probeExecutable(execPath, versionFlag)
 
 		name := lc.Language
 

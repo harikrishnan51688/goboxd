@@ -3,6 +3,8 @@ package config
 import (
 	"fmt"
 	"os"
+	"runtime"
+	"strconv"
 	"strings"
 
 	"gopkg.in/yaml.v3"
@@ -28,6 +30,7 @@ type LanguageConfig struct {
 	RuntimeOptions     ExecutionOptions  `yaml:"runtime_options"`
 	AllowedBuildFlags  []string          `yaml:"allowed_build_flags"`
 	AllowedRunFlags    []string          `yaml:"allowed_run_flags"`
+	VersionFlag        string            `yaml:"version_flag"` // flag to get version string, defaults to --version
 }
 
 type Config struct {
@@ -35,7 +38,28 @@ type Config struct {
 	SandboxDir          string           `yaml:"sandbox_dir"`
 	DefaultNsjailArgs   []string         `yaml:"default_nsjail_args"`
 	Languages           []LanguageConfig `yaml:"languages"`
+	ConcurrencyLimit    *int             `yaml:"concurrency_limit"`
 }
+
+// GetConcurrencyLimit returns the global concurrency limit.
+// It prioritizes the CONCURRENCY_LIMIT env var, then the concurrency_limit YAML field,
+// and defaults to runtime.NumCPU() (minimum 1).
+func (c *Config) GetConcurrencyLimit() int {
+	if envVal := os.Getenv("CONCURRENCY_LIMIT"); envVal != "" {
+		if limit, err := strconv.Atoi(envVal); err == nil && limit > 0 {
+			return limit
+		}
+	}
+	if c.ConcurrencyLimit != nil && *c.ConcurrencyLimit > 0 {
+		return *c.ConcurrencyLimit
+	}
+	limit := runtime.NumCPU()
+	if limit < 1 {
+		limit = 1
+	}
+	return limit
+}
+
 
 // Load reads and parses the YAML config file.
 func Load(path string) (*Config, error) {

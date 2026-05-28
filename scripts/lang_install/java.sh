@@ -9,9 +9,13 @@ apt-get update && apt-get install -y --no-install-recommends \
     && rm -rf /var/lib/apt/lists/*
 
 ARCH=$(dpkg --print-architecture)
+if [ "$ARCH" != "amd64" ]; then
+    ln -sf "/usr/lib/jvm/java-17-openjdk-$ARCH" /usr/lib/jvm/java-17-openjdk-amd64
+fi
 export JAVA_HOME="/usr/lib/jvm/java-17-openjdk-${ARCH}"
 echo "export JAVA_HOME=/usr/lib/jvm/java-17-openjdk-${ARCH}" >> /etc/profile
 echo "export PATH=\$JAVA_HOME/bin:\$PATH" >> /etc/profile
+
 
 echo "public class Test { public static void main(String[] args) { System.out.println(\"Java is working!\"); } }" > Test.java
 

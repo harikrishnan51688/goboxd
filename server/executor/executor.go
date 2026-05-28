@@ -36,47 +36,47 @@ type sandboxResult struct {
 }
 
 // Run is the public entry point — it tracks stats and delegates to run.
-func (e *Executor) Run(req *pb.RunRequest) (*pb.RunResponse, error) {
+func (e *Executor) Run(req *pb.RunRequest) (*pb.RunResponse, int64, error) {
 	e.stats.InFlight.Add(1)
 	defer e.stats.InFlight.Add(-1)
 	e.stats.JobsTotal.Add(1)
 
-	resp, err := e.run(req)
+	resp, cpuMs, err := e.run(req)
 	if err != nil {
 		e.stats.RecordInternalError()
 	}
-	return resp, err
+	return resp, cpuMs, err
 }
 
 func (e *Executor) Stats() *stats.Stats {
 	return e.stats
 }
 
-// Run executes a RunRequest and returns a RunResponse.
-func (e *Executor) run(req *pb.RunRequest) (*pb.RunResponse, error) {
+// run executes a RunRequest and returns a RunResponse, along with CPU time in milliseconds.
+func (e *Executor) run(req *pb.RunRequest) (*pb.RunResponse, int64, error) {
 	lang, err := e.cfg.Lookup(req.Language)
 	if err != nil {
-		return nil, fmt.Errorf("lookup language: %w", err)
+		return nil, 0, fmt.Errorf("lookup language: %w", err)
 	}
 
 	// Create an isolated temp working directory on the host.
 	// nsjail will bind-mount it into the chroot as /work.
 	workDir, err := os.MkdirTemp("", "goboxd-*")
 	if err != nil {
-		return nil, fmt.Errorf("mkdirtemp: %w", err)
+		return nil, 0, fmt.Errorf("mkdirtemp: %w", err)
 	}
 	defer os.RemoveAll(workDir)
 
 	// Determine source and binary filenames
 	srcFile, binFile, err := resolveFilenames(lang, req)
 	if err != nil {
-		return nil, fmt.Errorf("resolve filenames: %w", err)
+		return nil, 0, fmt.Errorf("resolve filenames: %w", err)
 	}
 
 	// Write source code into the working directory
 	srcPath := filepath.Join(workDir, srcFile)
 	if err := os.WriteFile(srcPath, []byte(req.Source), 0644); err != nil {
-		return nil, fmt.Errorf("write source: %w", err)
+		return nil, 0, fmt.Errorf("write source: %w", err)
 	}
 
 	templateVars := map[string]string{
@@ -86,6 +86,7 @@ func (e *Executor) run(req *pb.RunRequest) (*pb.RunResponse, error) {
 	}
 
 	resp := &pb.RunResponse{}
+	var totalCpuTimeMs int64
 
 	// ── Compilation step (skipped for interpreted languages) ──────────────
 	if lang.CompilationOptions != nil {
@@ -94,7 +95,8 @@ func (e *Executor) run(req *pb.RunRequest) (*pb.RunResponse, error) {
 		if req.Build != nil {
 			buildFlags = req.Build.Flags
 		}
-		r, compDuration, _ := e.runInSandbox(workDir, buildOpts, templateVars, "", buildFlags)
+		r, compDuration, _, compCpuMs := e.runInSandbox(workDir, buildOpts, templateVars, "", buildFlags)
+		totalCpuTimeMs += compCpuMs
 
 		buildStatus := "ok"
 		if r.Status != "ok" {
@@ -110,7 +112,7 @@ func (e *Executor) run(req *pb.RunRequest) (*pb.RunResponse, error) {
 
 		if r.Status != "ok" {
 			resp.Status = "compilation_error"
-			return resp, nil
+			return resp, totalCpuTimeMs, nil
 		}
 	}
 
@@ -123,7 +125,8 @@ func (e *Executor) run(req *pb.RunRequest) (*pb.RunResponse, error) {
 
 	overallStatus := "ok"
 	for _, tc := range req.Tests {
-		tcr := e.runTestCase(workDir, lang, runtimeOpts, templateVars, tc, runFlags)
+		tcr, cpuMs := e.runTestCase(workDir, lang, runtimeOpts, templateVars, tc, runFlags)
+		totalCpuTimeMs += cpuMs
 		resp.Tests = append(resp.Tests, tcr)
 		if tcr.Status != "ok" && overallStatus == "ok" {
 			overallStatus = tcr.Status
@@ -131,7 +134,7 @@ func (e *Executor) run(req *pb.RunRequest) (*pb.RunResponse, error) {
 	}
 	resp.Status = overallStatus
 
-	return resp, nil
+	return resp, totalCpuTimeMs, nil
 }
 
 // runTestCase runs one test case and compares output to expected.
@@ -142,8 +145,8 @@ func (e *Executor) runTestCase(
 	templateVars map[string]string,
 	tc *pb.TestCase,
 	flags []string,
-) *pb.TestResult {
-	r, durationMs, memoryPeakKB := e.runInSandbox(workDir, opts, templateVars, tc.Stdin, flags)
+) (*pb.TestResult, int64) {
+	r, durationMs, memoryPeakKB, cpuMs := e.runInSandbox(workDir, opts, templateVars, tc.Stdin, flags)
 
 	tcr := &pb.TestResult{
 		Stdout:       r.Stdout,
@@ -162,17 +165,17 @@ func (e *Executor) runTestCase(
 	default:
 		tcr.Status = r.Status
 	}
-	return tcr
+	return tcr, cpuMs
 }
 
-// runInSandbox builds and runs an nsjail command, returning a sandboxResult, duration in ms, and peak memory in kb.
+// runInSandbox builds and runs an nsjail command, returning a sandboxResult, duration in ms, peak memory in kb, and CPU time in ms.
 func (e *Executor) runInSandbox(
 	workDir string,
 	opts *config.ExecutionOptions,
 	templateVars map[string]string,
 	stdin string,
 	flags []string,
-) (*sandboxResult, int64, int64) {
+) (*sandboxResult, int64, int64, int64) {
 	// ── Build nsjail arguments ────────────────────────────────────────────
 	args := []string{
 		"-Mo",
@@ -240,6 +243,11 @@ func (e *Executor) runInSandbox(
 		}
 	}
 
+	var cpuTimeMs int64 = 0
+	if cmd.ProcessState != nil {
+		cpuTimeMs = (cmd.ProcessState.UserTime() + cmd.ProcessState.SystemTime()).Milliseconds()
+	}
+
 	stderrContent := stderr.String()
 	if runErr != nil && stderrContent == "" {
 		stderrContent = nsjailLog
@@ -250,7 +258,7 @@ func (e *Executor) runInSandbox(
 			Status: "time_limit_exceeded",
 			Stdout: stdout.String(),
 			Stderr: "time limit exceeded (host timeout)",
-		}, durationMs, memoryPeakKB
+		}, durationMs, memoryPeakKB, cpuTimeMs
 	}
 
 	if runErr != nil {
@@ -259,14 +267,14 @@ func (e *Executor) runInSandbox(
 			Status: classifyFailure(combinedStderr),
 			Stdout: stdout.String(),
 			Stderr: stderrContent,
-		}, durationMs, memoryPeakKB
+		}, durationMs, memoryPeakKB, cpuTimeMs
 	}
 
 	return &sandboxResult{
 		Status: "ok",
 		Stdout: stdout.String(),
 		Stderr: stderr.String(), // keep it strictly clean for successful runs
-	}, durationMs, memoryPeakKB
+	}, durationMs, memoryPeakKB, cpuTimeMs
 }
 
 // classifyFailure inspects nsjail's stderr log to pick the right Status string.
