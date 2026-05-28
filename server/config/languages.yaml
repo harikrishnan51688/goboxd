@@ -12,6 +12,8 @@ default_nsjail_args:
   - "/dev:/dev"
   - "-R"
   - "/etc:/etc"
+  - "-T"
+  - "/tmp"
   - "--log_fd"
   - "3"
 
@@ -81,16 +83,16 @@ languages:
       path: "/usr/bin/g++"
       args: ["{{ EXTRA_ARGS }}", "-o", "a.out", "{{ FILENAME }}"]
       resource_limits:
-        time_limit: 10
+        time_limit: 3
         process_limit: 100
-        memory_limit_mb: 512
+        memory_limit_mb: 10240
     runtime_options:
       path: "./a.out"
       args: []
       resource_limits:
-        time_limit: 5
-        process_limit: 50
-        memory_limit_mb: 128
+        time_limit: 3
+        process_limit: 0
+        memory_limit_mb: 1024
     allowed_build_flags:
       - "-O0"
       - "-O1"
@@ -133,4 +135,22 @@ languages:
       resource_limits:
         time_limit: 5
         process_limit: 50
+        memory_limit_mb: 102400
+
+  - language: "verilog"
+    filename: "solution.v"
+    version_flag: "-V"
+    compilation_options:
+      path: "/usr/bin/iverilog"
+      args: ["{{ EXTRA_ARGS }}", "-o", "a.out", "{{ FILENAME }}"]
+      resource_limits:
+        time_limit: 6
+        process_limit: 100
+        memory_limit_mb: 102400
+    runtime_options:
+      path: "/usr/bin/vvp"
+      args: ["a.out"]
+      resource_limits:
+        time_limit: 9
+        process_limit: 100
         memory_limit_mb: 102400
