@@ -1,7 +1,10 @@
-.PHONY: build up down test test-all test-c test-cpp test-java test-js test-py-hello test-py-fs test-py-net test-py-loop test-py-tle test-bash test-bash-isolation test-readyz
+.PHONY: build up down test test-all test-c test-cpp test-java test-js test-py-hello test-py-fs test-py-net test-py-loop test-py-tle test-verilog test-bash test-bash-isolation test-readyz load
 
 URL = http://localhost:8000/run
 URL_READY = http://localhost:8000/readyz
+
+load:
+	docker exec goboxd /app/load-tester -url http://localhost:8000/run -c 16 -n 1000
 
 build:
 	docker compose build
@@ -12,7 +15,7 @@ up:
 down:
 	docker compose down
 
-test-all: test-readyz test-c test-cpp test-java test-js test-py-hello test-py-fs test-py-net test-py-loop test-py-tle test-bash test-bash-isolation
+test-all: test-readyz test-c test-cpp test-java test-verilog test-js test-py-hello test-py-fs test-py-net test-py-loop test-py-tle test-bash test-bash-isolation
 	@echo "========================================"
 	@echo "   All tests executed successfully!"
 	@echo "========================================"
@@ -27,6 +30,17 @@ test-c:
 		echo "C Test PASSED"; \
 	else \
 		echo "C Test FAILED: $$RESPONSE"; \
+		exit 1; \
+	fi
+
+test-verilog:
+	@echo "Running Verilog test..."
+	@RESPONSE=$$(curl -s -X POST $(URL) -H 'Content-Type: application/json' -d @tests/test_verilog.json); \
+	STATUS=$$(echo $$RESPONSE | grep -o '"status":"[^"]*"' | head -n1); \
+	if [ "$$STATUS" = '"status":"ok"' ]; then \
+		echo "Verilog Test PASSED"; \
+	else \
+		echo "Verilog Test FAILED: $$RESPONSE"; \
 		exit 1; \
 	fi
 

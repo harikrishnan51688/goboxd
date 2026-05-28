@@ -1,0 +1,14 @@
+{
+  "language": "verilog",
+  "source": "`timescale 1ns/1ps\nmodule main;\n  integer a, b, n;\n  integer fd;\n  initial begin\n    fd = $fopen(\"/dev/stdin\", \"r\");\n    n = $fscanf(fd, \"%d %d\", a, b);\n    $display(\"%0d\", a + b);\n    $fclose(fd);\n    $finish;\n  end\nendmodule",
+  "tests": [
+    {
+      "stdin": "3 5\n",
+      "expected_stdout": "8\n"
+    },
+    {
+      "stdin": "10 20\n",
+      "expected_stdout": "30\n"
+    }
+  ]
+}
