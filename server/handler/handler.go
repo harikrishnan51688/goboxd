@@ -44,6 +44,8 @@ func (h *Handler) Handle(w http.ResponseWriter, r *http.Request) {
 		} else if r.URL.Path == "/" {
 			w.WriteHeader(http.StatusOK)
 			_, _ = w.Write([]byte("OK"))
+		} else if r.URL.Path == "/info" {
+			h.info(w, r)
 		} else {
 			http.Error(w, "not found", http.StatusNotFound)
 		}

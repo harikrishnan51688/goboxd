@@ -14,16 +14,18 @@ import (
 	"time"
 
 	"goboxd/config"
+	"goboxd/stats"
 	pb "goboxd/proto"
 )
 
 // Executor runs code in nsjail using the provided Config.
 type Executor struct {
 	cfg *config.Config
+	stats *stats.Stats
 }
 
 func New(cfg *config.Config) *Executor {
-	return &Executor{cfg: cfg}
+	return &Executor{cfg: cfg, stats: &stats.Stats{}}
 }
 
 // sandboxResult is the internal result of a single nsjail invocation.
@@ -33,8 +35,25 @@ type sandboxResult struct {
 	Stderr string
 }
 
-// Run executes a RunRequest and returns a RunResponse.
+// Run is the public entry point — it tracks stats and delegates to run.
 func (e *Executor) Run(req *pb.RunRequest) (*pb.RunResponse, error) {
+	e.stats.InFlight.Add(1)
+	defer e.stats.InFlight.Add(-1)
+	e.stats.JobsTotal.Add(1)
+
+	resp, err := e.run(req)
+	if err != nil {
+		e.stats.RecordInternalError()
+	}
+	return resp, err
+}
+
+func (e *Executor) Stats() *stats.Stats {
+	return e.stats
+}
+
+// Run executes a RunRequest and returns a RunResponse.
+func (e *Executor) run(req *pb.RunRequest) (*pb.RunResponse, error) {
 	lang, err := e.cfg.Lookup(req.Language)
 	if err != nil {
 		return nil, fmt.Errorf("lookup language: %w", err)
