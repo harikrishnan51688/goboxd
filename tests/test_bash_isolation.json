@@ -1,10 +1,10 @@
 {
   "language": "bash",
-  "source": "#!/bin/bash\nid -u",
+  "source": "#!/bin/bash\nUID_VAL=$(id -u)\nif [ \"$UID_VAL\" -ge 100000 ] && [ \"$UID_VAL\" -le 200000 ]; then\n  echo \"SAFE_UID\"\nelse\n  echo \"UNSAFE_UID: $UID_VAL\"\nfi",
   "tests": [
     {
       "stdin": "",
-      "expected_stdout": "99999\n"
+      "expected_stdout": "SAFE_UID\n"
     }
   ]
 }
