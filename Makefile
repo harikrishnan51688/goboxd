@@ -4,7 +4,7 @@ URL = http://localhost:8000/run
 URL_READY = http://localhost:8000/readyz
 
 load:
-	docker exec goboxd /app/load-tester -url http://localhost:8000/run -c 16 -n 1000
+	docker exec goboxd /app/load-tester -url http://localhost:8000/run -c 2000 -n 50000
 
 build:
 	docker compose build

@@ -10,9 +10,7 @@ services:
     container_name: goboxd
     ports:
       - "8000:8000"
-    # nsjail requires SYS_ADMIN (for chroot + namespace creation)
-    # and PTRACE (for nsjail process tracking).
-    # Using privileged is the simplest way to satisfy these in Docker.
+    # Using privileged (nsjail requires SYS_ADMIN)
     privileged: true
     restart: unless-stopped
     environment:

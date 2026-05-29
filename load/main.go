@@ -12,12 +12,12 @@ import (
 )
 
 const payload = `{
-  "language": "cpp",
-  "source": "#include <iostream>\nusing namespace std;\nint main() {\n    int n;\n    cin >> n;\n    long long a = 0, b = 1;\n    for (int i = 0; i < n; i++) {\n        cout << a << \"\\n\";\n        long long c = a + b; a = b; b = c;\n    }\n    return 0;\n}",
+  "language": "py3",
+  "source": "print('Hello from Python 3!')",
   "tests": [
     {
-      "stdin": "5\n",
-      "expected_stdout": "0\n1\n1\n2\n3\n"
+      "stdin": "",
+      "expected_stdout": "Hello from Python 3!\n"
     }
   ]
 }`

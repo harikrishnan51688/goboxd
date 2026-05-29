@@ -8,14 +8,12 @@ FROM golang:1.23-bookworm AS go-builder
 
 # Install protoc and the Go protobuf plugin
 RUN apt-get update && apt-get install -y --no-install-recommends \
-        protobuf-compiler \
-    && rm -rf /var/lib/apt/lists/*
+        protobuf-compiler && rm -rf /var/lib/apt/lists/*
 
 RUN go install google.golang.org/protobuf/cmd/protoc-gen-go@v1.34.2
 
 WORKDIR /build
 
-# Copy go module files first for layer caching.
 COPY server/go.mod ./
 RUN go mod download
 
