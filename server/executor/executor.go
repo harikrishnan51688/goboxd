@@ -5,11 +5,14 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"log"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"regexp"
 	"strings"
+	"sync"
+	"sync/atomic"
 	"syscall"
 	"time"
 
@@ -18,14 +21,98 @@ import (
 	pb "goboxd/proto"
 )
 
+// maxOutputBytes is the per-stream (stdout / stderr) cap for one sandbox run.
+// Output beyond this limit is silently discarded and a truncation marker is appended.
+const maxOutputBytes = 1 << 20 // 1 MiB
+
+const truncationMarker = "\n[... output truncated ...]\n"
+
+// cappedWriter wraps a bytes.Buffer and stops accepting new data once the cap
+// is reached, then appends a truncation marker on the first overflow.
+type cappedWriter struct {
+	mu      sync.Mutex
+	buf     bytes.Buffer
+	cap     int
+	trunc   bool // true once we have overflowed
+}
+
+func newCappedWriter(cap int) *cappedWriter {
+	return &cappedWriter{cap: cap}
+}
+
+func (c *cappedWriter) Write(p []byte) (int, error) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if c.trunc {
+		// Already truncated — accept the call (return n so the child doesn't
+		// get a broken-pipe) but discard the bytes.
+		return len(p), nil
+	}
+	remain := c.cap - c.buf.Len()
+	if remain <= 0 {
+		c.trunc = true
+		c.buf.WriteString(truncationMarker)
+		return len(p), nil
+	}
+	if len(p) > remain {
+		c.buf.Write(p[:remain])
+		c.trunc = true
+		c.buf.WriteString(truncationMarker)
+	} else {
+		c.buf.Write(p)
+	}
+	return len(p), nil
+}
+
+func (c *cappedWriter) String() string {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return c.buf.String()
+}
+
 // Executor runs code in nsjail using the provided Config.
 type Executor struct {
-	cfg *config.Config
-	stats *stats.Stats
+	cfg        *config.Config
+	stats      *stats.Stats
+	jobCounter int64
 }
 
 func New(cfg *config.Config) *Executor {
+	// Sweep stale orphaned jail directories concurrently on startup
+	go cleanOrphanedJails(10 * time.Minute)
 	return &Executor{cfg: cfg, stats: &stats.Stats{}}
+}
+
+func cleanOrphanedJails(maxAge time.Duration) {
+	tempDir := os.TempDir()
+	entries, err := os.ReadDir(tempDir)
+	if err != nil {
+		log.Printf("Failed to read temp dir %s for orphan cleanup: %v", tempDir, err)
+		return
+	}
+
+	cleaned := 0
+	for _, entry := range entries {
+		if !entry.IsDir() {
+			continue
+		}
+		if !strings.HasPrefix(entry.Name(), "goboxd-") {
+			continue
+		}
+		info, err := entry.Info()
+		if err != nil {
+			continue
+		}
+		if time.Since(info.ModTime()) > maxAge {
+			path := filepath.Join(tempDir, entry.Name())
+			if err := os.RemoveAll(path); err == nil {
+				cleaned++
+			}
+		}
+	}
+	if cleaned > 0 {
+		log.Printf("Startup sweep: Cleaned up %d orphaned stale jail directories from %s", cleaned, tempDir)
+	}
 }
 
 // sandboxResult is the internal result of a single nsjail invocation.
@@ -177,11 +264,16 @@ func (e *Executor) runInSandbox(
 	flags []string,
 ) (*sandboxResult, int64, int64, int64) {
 	// ── Build nsjail arguments ────────────────────────────────────────────
+	// Generate a unique UID/GID for this run to prevent collisions under load.
+	// We use a pool of 100,000 UIDs starting from 100000.
+	runID := atomic.AddInt64(&e.jobCounter, 1)
+	uid := 100000 + (runID % 100000)
+
 	args := []string{
 		"-Mo",
 		"--chroot", e.cfg.SandboxDir,
-		"--user", "99999",
-		"--group", "99999",
+		"--user", fmt.Sprintf("%d", uid),
+		"--group", fmt.Sprintf("%d", uid),
 		"--time_limit", fmt.Sprintf("%d", opts.ResourceLimits.TimeLimit),
 		"--rlimit_as", fmt.Sprintf("%d", opts.ResourceLimits.MemoryLimitMB),
 		"--max_cpus", "1",
@@ -209,9 +301,10 @@ func (e *Executor) runInSandbox(
 
 	cmd := exec.CommandContext(ctx, e.cfg.NsjailPath, args...)
 
-	var stdout, stderr bytes.Buffer
-	cmd.Stdout = &stdout
-	cmd.Stderr = &stderr
+	stdout := newCappedWriter(maxOutputBytes)
+	stderr := newCappedWriter(maxOutputBytes)
+	cmd.Stdout = stdout
+	cmd.Stderr = stderr
 
 	if stdin != "" {
 		cmd.Stdin = strings.NewReader(stdin)
