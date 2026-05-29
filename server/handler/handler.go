@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"os"
 	"os/exec"
+	"regexp"
 	"strings"
 	"time"
 	"unicode/utf8"
@@ -87,6 +88,26 @@ func writeErrorResponse(w http.ResponseWriter, code string, msg string) {
 	_ = json.NewEncoder(w).Encode(resp)
 }
 
+// safeFilenameRe allows only printable, shell-safe characters in filenames.
+// Permitted: letters, digits, dot, hyphen, underscore.
+var safeFilenameRe = regexp.MustCompile(`^[A-Za-z0-9._-]+$`)
+
+const (
+	maxBodyBytes     = 1 << 20   // 1 MiB total HTTP body
+	maxTests         = 50        // max test cases per request
+	maxStdinBytes    = 64 * 1024 // 64 KiB per test stdin
+	maxExpectedBytes = 256 * 1024 // 256 KiB per test expected_stdout
+	maxFlagsPerStep  = 20        // max compiler/runtime flags per step
+)
+
+// legacyAliases holds JSON field names used by legacy/test clients that differ
+// from the proto field names. We extract these with encoding/json before the
+// protojson pass so our validation logic still fires on them.
+type legacyAliases struct {
+	Filename  string   `json:"filename"`   // alias for source_filename
+	ExtraArgs []string `json:"extra_args"` // alias for build.flags
+}
+
 func (h *Handler) judge(w http.ResponseWriter, r *http.Request) {
 	startTime := time.Now()
 	// Bounded global concurrency limit: queue requests if limit reached.
@@ -99,21 +120,42 @@ func (h *Handler) judge(w http.ResponseWriter, r *http.Request) {
 	}
 	queueDuration := time.Since(startTime)
 
+	// Cap the body at maxBodyBytes to prevent OOM from huge payloads.
+	r.Body = http.MaxBytesReader(w, r.Body, maxBodyBytes)
 	body, err := io.ReadAll(r.Body)
 	if err != nil {
-		http.Error(w, "failed to read body", http.StatusBadRequest)
+		if err.Error() == "http: request body too large" {
+			writeErrorResponse(w, "request_too_large", fmt.Sprintf("request body exceeds %d bytes", maxBodyBytes))
+		} else {
+			http.Error(w, "failed to read body", http.StatusBadRequest)
+		}
 		return
 	}
 	defer r.Body.Close()
 
-	// Parse using protojson with DiscardUnknown enabled
-	var req pb.RunRequest
-	unmarshalOpts := protojson.UnmarshalOptions{
-		DiscardUnknown: true,
+	// Stage 1: extract legacy field aliases (filename, extra_args) before
+	// protojson swallows them with DiscardUnknown.
+	var aliases legacyAliases
+	if err := json.Unmarshal(body, &aliases); err != nil {
+		writeErrorResponse(w, "bad_json", "invalid JSON: "+err.Error())
+		return
 	}
+
+	// Stage 2: parse the standard proto fields.
+	var req pb.RunRequest
+	unmarshalOpts := protojson.UnmarshalOptions{DiscardUnknown: true}
 	if err := unmarshalOpts.Unmarshal(body, &req); err != nil {
 		writeErrorResponse(w, "bad_json", "invalid JSON: "+err.Error())
 		return
+	}
+
+	// Map legacy "filename" → source_filename (only if the canonical field is absent).
+	if aliases.Filename != "" && req.SourceFilename == "" {
+		req.SourceFilename = aliases.Filename
+	}
+	// Map legacy "extra_args" → build.flags (only if build block absent).
+	if len(aliases.ExtraArgs) > 0 && req.Build == nil {
+		req.Build = &pb.StepConfig{Flags: aliases.ExtraArgs}
 	}
 
 	// 1. Language validation
@@ -159,12 +201,24 @@ func (h *Handler) judge(w http.ResponseWriter, r *http.Request) {
 		if filename == "" {
 			return true
 		}
-		if strings.Contains(filename, "/") || strings.Contains(filename, "\\") {
+		// Reject null bytes (bypasses many string comparisons).
+		if strings.ContainsRune(filename, 0) {
+			writeErrorResponse(w, "invalid_filename", fmt.Sprintf("%s contains null byte", fieldName))
+			return false
+		}
+		// Reject any path separators.
+		if strings.ContainsAny(filename, "/\\") {
 			writeErrorResponse(w, "invalid_filename", fmt.Sprintf("%s must be a single path component", fieldName))
 			return false
 		}
-		if strings.HasPrefix(filename, ".") {
-			writeErrorResponse(w, "invalid_filename", fmt.Sprintf("%s must not have a leading dot", fieldName))
+		// Reject dot-only segments (".", "..") regardless of position.
+		if filename == "." || filename == ".." {
+			writeErrorResponse(w, "invalid_filename", fmt.Sprintf("%s must not be a dot-only name", fieldName))
+			return false
+		}
+		// Enforce a safe character allowlist: letters, digits, dot, hyphen, underscore.
+		if !safeFilenameRe.MatchString(filename) {
+			writeErrorResponse(w, "invalid_filename", fmt.Sprintf("%s contains disallowed characters (only A-Za-z0-9._- are permitted)", fieldName))
 			return false
 		}
 		if len(filename) > 255 {
@@ -192,6 +246,10 @@ func (h *Handler) judge(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if req.Build != nil {
+		if len(req.Build.Flags) > maxFlagsPerStep {
+			writeErrorResponse(w, "too_many_flags", fmt.Sprintf("build flags count (%d) exceeds maximum of %d", len(req.Build.Flags), maxFlagsPerStep))
+			return
+		}
 		for _, flag := range req.Build.Flags {
 			if !isFlagAllowed(lang.AllowedBuildFlags, flag) {
 				writeErrorResponse(w, "disallowed_flag", fmt.Sprintf("flag %q is not allowed for build in language %s", flag, req.Language))
@@ -201,6 +259,10 @@ func (h *Handler) judge(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if req.Run != nil {
+		if len(req.Run.Flags) > maxFlagsPerStep {
+			writeErrorResponse(w, "too_many_flags", fmt.Sprintf("run flags count (%d) exceeds maximum of %d", len(req.Run.Flags), maxFlagsPerStep))
+			return
+		}
 		for _, flag := range req.Run.Flags {
 			if !isFlagAllowed(lang.AllowedRunFlags, flag) {
 				writeErrorResponse(w, "disallowed_flag", fmt.Sprintf("flag %q is not allowed for run in language %s", flag, req.Language))
@@ -213,6 +275,20 @@ func (h *Handler) judge(w http.ResponseWriter, r *http.Request) {
 	if len(req.Tests) == 0 {
 		writeErrorResponse(w, "missing_tests", "at least one test case is required")
 		return
+	}
+	if len(req.Tests) > maxTests {
+		writeErrorResponse(w, "too_many_tests", fmt.Sprintf("number of test cases (%d) exceeds maximum of %d", len(req.Tests), maxTests))
+		return
+	}
+	for i, tc := range req.Tests {
+		if len(tc.Stdin) > maxStdinBytes {
+			writeErrorResponse(w, "stdin_too_large", fmt.Sprintf("test %d: stdin exceeds maximum size of %d bytes", i, maxStdinBytes))
+			return
+		}
+		if len(tc.ExpectedStdout) > maxExpectedBytes {
+			writeErrorResponse(w, "expected_too_large", fmt.Sprintf("test %d: expected_stdout exceeds maximum size of %d bytes", i, maxExpectedBytes))
+			return
+		}
 	}
 
 	log.Printf("judge: lang=%s tests=%d", req.Language, len(req.Tests))
