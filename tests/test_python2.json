@@ -1,0 +1,10 @@
+{
+  "language": "py2",
+  "source": "print 'Hello from Python 2!'",
+  "tests": [
+    {
+      "stdin": "",
+      "expected_stdout": "Hello from Python 2!\n"
+    }
+  ]
+}
