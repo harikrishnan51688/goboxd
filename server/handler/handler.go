@@ -93,11 +93,11 @@ func writeErrorResponse(w http.ResponseWriter, code string, msg string) {
 var safeFilenameRe = regexp.MustCompile(`^[A-Za-z0-9._-]+$`)
 
 const (
-	maxBodyBytes     = 1 << 20   // 1 MiB total HTTP body
-	maxTests         = 50        // max test cases per request
-	maxStdinBytes    = 64 * 1024 // 64 KiB per test stdin
+	maxBodyBytes     = 1 << 20    // 1 MiB total HTTP body
+	maxTests         = 50         // max test cases per request
+	maxStdinBytes    = 64 * 1024  // 64 KiB per test stdin
 	maxExpectedBytes = 256 * 1024 // 256 KiB per test expected_stdout
-	maxFlagsPerStep  = 20        // max compiler/runtime flags per step
+	maxFlagsPerStep  = 20         // max compiler/runtime flags per step
 )
 
 // legacyAliases holds JSON field names used by legacy/test clients that differ
@@ -158,7 +158,7 @@ func (h *Handler) judge(w http.ResponseWriter, r *http.Request) {
 		req.Build = &pb.StepConfig{Flags: aliases.ExtraArgs}
 	}
 
-	// 1. Language validation
+	// Language validation
 	if req.Language == "" {
 		writeErrorResponse(w, "missing_language", "language is required")
 		return
@@ -169,12 +169,12 @@ func (h *Handler) judge(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// 2. Source validation
+	// Source validation
 	if req.Source == "" {
 		writeErrorResponse(w, "missing_source", "source code is required")
 		return
 	}
-	// Default max size 256 KiB (262,144 bytes)
+	// Max size is 256 KiB
 	if len(req.Source) > 256*1024 {
 		writeErrorResponse(w, "source_too_large", "source code exceeds maximum size of 256 KiB")
 		return
@@ -184,7 +184,7 @@ func (h *Handler) judge(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// 3. Filename validation
+	// Filename validation
 	needsFilenames := lang.Filename == "TAKE_FROM_REQUEST" || lang.BinaryFilename == "TAKE_FROM_REQUEST"
 	if needsFilenames {
 		if req.SourceFilename == "" {
@@ -201,22 +201,22 @@ func (h *Handler) judge(w http.ResponseWriter, r *http.Request) {
 		if filename == "" {
 			return true
 		}
-		// Reject null bytes (bypasses many string comparisons).
+		// Reject null bytes to bypass bypasses in file lookup
 		if strings.ContainsRune(filename, 0) {
 			writeErrorResponse(w, "invalid_filename", fmt.Sprintf("%s contains null byte", fieldName))
 			return false
 		}
-		// Reject any path separators.
+		// Reject path separators to prevent path traversal
 		if strings.ContainsAny(filename, "/\\") {
 			writeErrorResponse(w, "invalid_filename", fmt.Sprintf("%s must be a single path component", fieldName))
 			return false
 		}
-		// Reject dot-only segments (".", "..") regardless of position.
+		// Reject dot-only segments
 		if filename == "." || filename == ".." {
 			writeErrorResponse(w, "invalid_filename", fmt.Sprintf("%s must not be a dot-only name", fieldName))
 			return false
 		}
-		// Enforce a safe character allowlist: letters, digits, dot, hyphen, underscore.
+		// Enforce safe alphanumeric and dot/hyphen/underscore naming
 		if !safeFilenameRe.MatchString(filename) {
 			writeErrorResponse(w, "invalid_filename", fmt.Sprintf("%s contains disallowed characters (only A-Za-z0-9._- are permitted)", fieldName))
 			return false
@@ -235,7 +235,7 @@ func (h *Handler) judge(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// 4. Flags validation
+	// Flags validation
 	isFlagAllowed := func(allowedFlags []string, flag string) bool {
 		for _, f := range allowedFlags {
 			if f == flag {
@@ -271,7 +271,7 @@ func (h *Handler) judge(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	// 5. Tests validation
+	// Tests validation
 	if len(req.Tests) == 0 {
 		writeErrorResponse(w, "missing_tests", "at least one test case is required")
 		return
@@ -340,7 +340,7 @@ type ReadinessResponse struct {
 func (h *Handler) readyz(w http.ResponseWriter, r *http.Request) {
 	overallOK := true
 
-	// 1. Probe nsjail
+	// Probe nsjail
 	nsjailOK := true
 	nsjailVersion := "3.4"
 	nsjailErrStr := ""
@@ -377,7 +377,7 @@ func (h *Handler) readyz(w http.ResponseWriter, r *http.Request) {
 		nsjailStatus.Error = nsjailErrStr
 	}
 
-	// 2. Probe configured languages
+	// Probe configured languages
 	languagesStatus := make(map[string]ComponentStatus)
 
 	for _, lang := range h.cfg.Languages {

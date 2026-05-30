@@ -6,10 +6,10 @@ import (
 )
 
 type Stats struct {
-	InFlight            atomic.Int64
-	JobsTotal           atomic.Int64
-	JobsFailedInternal  atomic.Int64
-	lastInternalErrAt   atomic.Int64 // unix nano, 0 = never
+	InFlight           atomic.Int64
+	JobsTotal          atomic.Int64
+	JobsFailedInternal atomic.Int64
+	lastInternalErrAt  atomic.Int64 // unix nano, 0 = never
 }
 
 func (s *Stats) RecordInternalError() {

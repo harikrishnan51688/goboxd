@@ -17,8 +17,8 @@ import (
 	"time"
 
 	"goboxd/config"
-	"goboxd/stats"
 	pb "goboxd/proto"
+	"goboxd/stats"
 )
 
 // maxOutputBytes is the per-stream (stdout / stderr) cap for one sandbox run.
@@ -30,10 +30,10 @@ const truncationMarker = "\n[... output truncated ...]\n"
 // cappedWriter wraps a bytes.Buffer and stops accepting new data once the cap
 // is reached, then appends a truncation marker on the first overflow.
 type cappedWriter struct {
-	mu      sync.Mutex
-	buf     bytes.Buffer
-	cap     int
-	trunc   bool // true once we have overflowed
+	mu    sync.Mutex
+	buf   bytes.Buffer
+	cap   int
+	trunc bool // true once we have overflowed
 }
 
 func newCappedWriter(cap int) *cappedWriter {
@@ -175,7 +175,7 @@ func (e *Executor) run(req *pb.RunRequest) (*pb.RunResponse, int64, error) {
 	resp := &pb.RunResponse{}
 	var totalCpuTimeMs int64
 
-	// ── Compilation step (skipped for interpreted languages) ──────────────
+	// Compilation step (skipped for interpreted languages)
 	if lang.CompilationOptions != nil {
 		buildOpts := overrideOptions(lang.CompilationOptions, req.Build)
 		var buildFlags []string
@@ -203,7 +203,7 @@ func (e *Executor) run(req *pb.RunRequest) (*pb.RunResponse, int64, error) {
 		}
 	}
 
-	// ── Test case execution ───────────────────────────────────────────────
+	// Test case execution
 	runtimeOpts := overrideOptions(&lang.RuntimeOptions, req.Run)
 	var runFlags []string
 	if req.Run != nil {
@@ -238,7 +238,7 @@ func (e *Executor) runTestCase(
 	tcr := &pb.TestResult{
 		Stdout:       r.Stdout,
 		Stderr:       r.Stderr,
-		DurationMs:  int32(durationMs),
+		DurationMs:   int32(durationMs),
 		MemoryPeakKb: int32(memoryPeakKB),
 	}
 
@@ -263,7 +263,7 @@ func (e *Executor) runInSandbox(
 	stdin string,
 	flags []string,
 ) (*sandboxResult, int64, int64, int64) {
-	// ── Build nsjail arguments ────────────────────────────────────────────
+	// Build nsjail arguments
 	// Generate a unique UID/GID for this run to prevent collisions under load.
 	// We use a pool of 100,000 UIDs starting from 100000.
 	runID := atomic.AddInt64(&e.jobCounter, 1)
@@ -294,7 +294,7 @@ func (e *Executor) runInSandbox(
 	args = append(args, opts.Path)
 	args = append(args, config.ExpandArgsWithFlags(opts.Args, templateVars, flags)...)
 
-	// ── Run with a deadline slightly above the sandbox time_limit ─────────
+	// Run with a deadline slightly above the sandbox time_limit
 	timeout := time.Duration(opts.ResourceLimits.TimeLimit+2) * time.Second
 	ctx, cancel := context.WithTimeout(context.Background(), timeout)
 	defer cancel()

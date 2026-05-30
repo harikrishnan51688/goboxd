@@ -11,8 +11,8 @@ import (
 )
 
 type ResourceLimits struct {
-	TimeLimit    int `yaml:"time_limit"`    // seconds
-	ProcessLimit int `yaml:"process_limit"` // 0 = unlimited
+	TimeLimit     int `yaml:"time_limit"`    // seconds
+	ProcessLimit  int `yaml:"process_limit"` // 0 = unlimited
 	MemoryLimitMB int `yaml:"memory_limit_mb"`
 }
 
@@ -34,11 +34,11 @@ type LanguageConfig struct {
 }
 
 type Config struct {
-	NsjailPath          string           `yaml:"nsjail_path"`
-	SandboxDir          string           `yaml:"sandbox_dir"`
-	DefaultNsjailArgs   []string         `yaml:"default_nsjail_args"`
-	Languages           []LanguageConfig `yaml:"languages"`
-	ConcurrencyLimit    *int             `yaml:"concurrency_limit"`
+	NsjailPath        string           `yaml:"nsjail_path"`
+	SandboxDir        string           `yaml:"sandbox_dir"`
+	DefaultNsjailArgs []string         `yaml:"default_nsjail_args"`
+	Languages         []LanguageConfig `yaml:"languages"`
+	ConcurrencyLimit  *int             `yaml:"concurrency_limit"`
 }
 
 // GetConcurrencyLimit returns the global concurrency limit.
@@ -59,7 +59,6 @@ func (c *Config) GetConcurrencyLimit() int {
 	}
 	return limit
 }
-
 
 // Load reads and parses the YAML config file.
 func Load(path string) (*Config, error) {
@@ -140,4 +139,3 @@ func ExpandArgsWithFlags(args []string, vars map[string]string, flags []string) 
 
 	return out
 }
-

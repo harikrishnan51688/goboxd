@@ -13,7 +13,8 @@ import (
 )
 
 // Set via -ldflags at build time:
-//   -X goboxd/handler.Version=0.1.0 -X goboxd/handler.GitCommit=abc1234
+//
+//	-X goboxd/handler.Version=0.1.0 -X goboxd/handler.GitCommit=abc1234
 var (
 	Version   = "dev"
 	GitCommit = "dev"
@@ -50,11 +51,11 @@ type globalLimits struct {
 }
 
 type statsSnapshot struct {
-	InFlightJobs        int64   `json:"in_flight_jobs"`
-	JobsTotal           int64   `json:"jobs_total"`
-	JobsFailedInternal  int64   `json:"jobs_failed_internal"`
-	LastInternalErrorAt *string `json:"last_internal_error_at"`
-	DiskFreeBytesJailDir uint64 `json:"disk_free_bytes_jail_dir"`
+	InFlightJobs         int64   `json:"in_flight_jobs"`
+	JobsTotal            int64   `json:"jobs_total"`
+	JobsFailedInternal   int64   `json:"jobs_failed_internal"`
+	LastInternalErrorAt  *string `json:"last_internal_error_at"`
+	DiskFreeBytesJailDir uint64  `json:"disk_free_bytes_jail_dir"`
 }
 
 type infoResponse struct {
@@ -66,7 +67,7 @@ type infoResponse struct {
 }
 
 func (h *Handler) info(w http.ResponseWriter, r *http.Request) {
-	// ── nsjail version ────────────────────────────────────────────────────
+	// Nsjail version
 	nsjailVer := probeNsjailVersion(h.cfg.NsjailPath)
 
 	langs := make([]languageInfo, 0, len(h.cfg.Languages))
@@ -98,14 +99,14 @@ func (h *Handler) info(w http.ResponseWriter, r *http.Request) {
 		})
 	}
 
-	// ── disk free bytes at the jail/sandbox dir ───────────────────────────
+	// Disk free bytes at the jail/sandbox dir
 	var diskFree uint64
 	var fs syscall.Statfs_t
 	if err := syscall.Statfs(h.cfg.SandboxDir, &fs); err == nil {
 		diskFree = fs.Bavail * uint64(fs.Bsize)
 	}
 
-	// ── stats snapshot ────────────────────────────────────────────────────
+	// Stats snapshot
 	st := h.exec.Stats()
 	var lastErrStr *string
 	if t := st.LastInternalErrorAt(); t != nil {
