@@ -163,5 +163,3 @@ func probeNsjailVersion(path string) string {
 	}
 	return "unknown"
 }
-
-// probeExecutable is already defined in handler.go and reused here.
