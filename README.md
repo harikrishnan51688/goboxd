@@ -21,6 +21,11 @@ goboxd is an HTTP service written in Go that compiles and runs untrusted code in
 - Per request resource limits for time, memory, and processes
 - Liveness and readiness probes for orchestration
 
+## Documentation
+
+- [Architecture](docs/architecture.md) - High level design and component interactions
+- [Benchmarks](docs/benchmarks.md) - Performance and resource usage metrics
+
 ## Getting started
 
 ### Prerequisites
@@ -47,7 +52,39 @@ make down         # stop all containers
 make test         # run API integration tests
 make load         # run load tests
 ```
+## Send your first request
 
+**Health check:**
+
+```bash
+curl http://localhost:8000/
+# => "OK"
+```
+Save the following as `hello_py.json`:
+
+```json
+{
+  "language": "py3",
+  "source": "print('Hello from Python 3!')",
+  "tests": [
+    {
+      "stdin": "",
+      "expected_stdout": "Hello from Python 3!\n"
+    }
+  ]
+}
+```
+Send it:
+
+```bash
+curl -s -X POST http://localhost:8000/run -H 'Content-Type: application/json' -d @hello_py.json
+```
+Expected response (truncated):
+
+```text
+{"status":"ok", "tests":[{"status":"ok", "stdout":"Hello from Python 3!\n", "duration_ms":13, "memory_peak_kb":91576}]}
+```
+If you get `OK` back, the server, `nsjail`, and the Python 3 toolchain are all wired up correctly. You can also try other supported languages
 
 ## Project structure
 
