@@ -1,0 +1,10 @@
+{
+  "language": "rust",
+  "source": "fn main() {\n    println!(\"Hello, World!\");\n}",
+  "tests": [
+    {
+      "stdin": "",
+      "expected_stdout": "Hello, World!\n"
+    }
+  ]
+}

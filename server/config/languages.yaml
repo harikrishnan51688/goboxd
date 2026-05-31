@@ -8,6 +8,8 @@ sandbox_dir: "/sandbox"
 default_nsjail_args:
   - "--env"
   - "PATH=/usr/local/bin:/usr/bin:/bin"
+  - "--env"
+  - "GOCACHE=/tmp"
   - "-B"
   - "/dev:/dev"
   - "-R"
@@ -16,6 +18,10 @@ default_nsjail_args:
   - "/tmp"
   - "--log_fd"
   - "3"
+  - "--rlimit_nofile"
+  - "1024"
+  - "--rlimit_fsize"
+  - "hard"
 
 languages:
   - language: "bash"
@@ -25,8 +31,8 @@ languages:
       args: ["{{ FILENAME }}"]
       resource_limits:
         time_limit: 5
-        process_limit: 50
-        memory_limit_mb: 128
+        process_limit: 100
+        memory_limit_mb: 102400
 
   - language: "py3"
     filename: "solution.py"
@@ -34,9 +40,9 @@ languages:
       path: "/usr/bin/python3"
       args: ["{{ FILENAME }}"]
       resource_limits:
-        time_limit: 5
-        process_limit: 50
-        memory_limit_mb: 128
+        time_limit: 9
+        process_limit: 100
+        memory_limit_mb: 102400
 
   - language: "py2"
     filename: "solution.py"
@@ -44,9 +50,9 @@ languages:
       path: "/usr/bin/python"
       args: ["{{ FILENAME }}"]
       resource_limits:
-        time_limit: 5
-        process_limit: 50
-        memory_limit_mb: 128
+        time_limit: 9
+        process_limit: 100
+        memory_limit_mb: 102400
 
   - language: "c"
     filename: "solution.c"
@@ -56,14 +62,14 @@ languages:
       resource_limits:
         time_limit: 10
         process_limit: 100
-        memory_limit_mb: 512
+        memory_limit_mb: 102400
     runtime_options:
       path: "./a.out"
       args: []
       resource_limits:
         time_limit: 5
-        process_limit: 50
-        memory_limit_mb: 128
+        process_limit: 100
+        memory_limit_mb: 10240
     allowed_build_flags:
       - "-O0"
       - "-O1"
@@ -152,5 +158,63 @@ languages:
       args: ["a.out"]
       resource_limits:
         time_limit: 9
+        process_limit: 100
+        memory_limit_mb: 102400
+
+  - language: "ruby"
+    filename: "solution.rb"
+    version_flag: "-v"
+    compilation_options:
+      path: "/usr/bin/ruby"
+      args: ["{{ EXTRA_ARGS }}", "{{ FILENAME }}"]
+      resource_limits:
+        time_limit: 5
+        process_limit: 100
+        memory_limit_mb: 102400
+    runtime_options:
+      path: "/usr/bin/ruby"
+      args: ["{{ FILENAME }}"]
+      resource_limits:
+        time_limit: 5
+        process_limit: 100
+        memory_limit_mb: 102400
+
+  - language: "rust"
+    filename: "solution.rs"
+    version_flag: "--version"
+    compilation_options:
+      path: "/usr/bin/rustc"
+      args: ["{{ EXTRA_ARGS }}", "-C", "prefer-dynamic", "-o", "a.out", "{{ FILENAME }}"]
+      resource_limits:
+        time_limit: 30
+        process_limit: 100
+        memory_limit_mb: 102400
+    runtime_options:
+      path: "./a.out"
+      args: []
+      resource_limits:
+        time_limit: 5
+        process_limit: 100
+        memory_limit_mb: 102400
+    allowed_build_flags:
+      - "-C"
+      - "opt-level=0"
+      - "-g"
+
+  - language: "go"
+    filename: "solution.go"
+    version_flag: "version"
+    compilation_options:
+      path: "/usr/bin/go"
+      args: ["build", "-o", "a.out", "{{ FILENAME }}"]
+      resource_limits:
+        time_limit: 10
+        process_limit: 100
+        memory_limit_mb: 102400
+    runtime_options:
+      path: "./a.out"
+      args: []
+      resource_limits:
+        time_limit: 5
         process_limit: 100
         memory_limit_mb: 102400

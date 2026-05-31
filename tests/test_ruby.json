@@ -1,0 +1,10 @@
+{
+  "language": "ruby",
+  "source": "puts 'Hello, World!'",
+  "tests": [
+    {
+      "stdin": "",
+      "expected_stdout": "Hello, World!\n"
+    }
+  ]
+}

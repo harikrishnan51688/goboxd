@@ -1,0 +1,10 @@
+{
+  "language": "go",
+  "source": "package main\n\nimport \"fmt\"\n\nfunc main() {\n    fmt.Println(\"Hello, World!\")\n}\n",
+  "tests": [
+    {
+      "stdin": "",
+      "expected_stdout": "Hello, World!\n"
+    }
+  ]
+}
