@@ -46,6 +46,8 @@ func (h *Handler) Handle(w http.ResponseWriter, r *http.Request) {
 	case http.MethodGet:
 		if r.URL.Path == "/readyz" {
 			h.readyz(w, r)
+		} else if r.URL.Path == "/healthz" {
+			h.healthz(w, r)
 		} else if r.URL.Path == "/" {
 			w.WriteHeader(http.StatusOK)
 			_, _ = w.Write([]byte("OK"))
@@ -426,6 +428,14 @@ func (h *Handler) readyz(w http.ResponseWriter, r *http.Request) {
 
 	_ = json.NewEncoder(w).Encode(resp)
 }
+
+// healthz liveness check: returns 200 OK if the server is running. Does not check dependencies.
+func (h *Handler) healthz(w http.ResponseWriter, r *http.Request) {
+    w.Header().Set("Content-Type", "application/json")
+    w.WriteHeader(http.StatusOK)
+    _, _ = w.Write([]byte(`{"status":"ok"}`))
+}
+
 
 func probeExecutable(path string, versionFlag string) (string, error) {
 	info, err := os.Stat(path)
